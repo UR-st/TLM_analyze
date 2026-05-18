@@ -1,7 +1,9 @@
 import numpy as np
 import math
 from sgp4.api import Satrec, WGS72
-from class_def import TLE_Elements 
+from class_def import TLE_Elements_, TLE_Hex_
+import struct
+import json
 
 def get_tle_lines(file_name):
     """TLEファイルを読み込み、3行のリストを返す"""
@@ -16,7 +18,7 @@ def get_tle_lines(file_name):
 def tle_2_param(lines):
     """ライブラリを用いてTLEを解析し、TLE_Elementsクラスに値を格納する"""
     # インスタンス化 (クラスの定義に合わせて修正してください)
-    tle = TLE_Elements
+    tle = TLE_Elements_()
     
     # sgp4ライブラリでパース
     # lines[1]が1行目、lines[2]が2行目
@@ -51,17 +53,38 @@ def tle_2_param(lines):
 
     return tle
 
-def tle_2_MRAM(file_name):
-    lines = get_tle_lines(file_name)
-    tle_params = tle_2_param(lines)
-    
-    # ここでMRAM送信用データへの変換処理を行う想定
-    tle_mram = "e" 
-    return tle_mram
-
 def param_2_hex(param, type):
     # パラメータを16進数(バイナリ)に変換するロジックをここに記述
-    return hex(int(param)) # 仮の実装
+    tle_hex = TLE_Hex_()
+    tle_hex.ep_year = struct.pack('<I',param.ep_year).hex()
+    tle_hex.ep_day = struct.pack('<d',param.ep_day).hex()
+    tle_hex.rev = struct.pack('<d',param.rev).hex()
+    tle_hex.bstar = struct.pack('<d',param.bstar).hex()
+    tle_hex.eqinc = struct.pack('<d',param.eqinc).hex()
+    tle_hex.ecc = struct.pack('<d',param.ecc).hex()
+    tle_hex.mnan = struct.pack('<d',param.mnan).hex()
+    tle_hex.argp = struct.pack('<d',param.argp).hex()
+    tle_hex.ascn = struct.pack('<d',param.ascn).hex()
+   
+    return tle_hex # 仮の実装
+
+def tle_2_MRAM(file_name,file_name_of_json):
+    lines = get_tle_lines(file_name)
+    tle_params = tle_2_param(lines)
+    tle_hex = param_2_hex(tle_params, type)
+    tle_2_command_script(tle_hex,file_name_of_json)
+    
+    # ここでMRAM送信用データへの変換処理を行う想定
+    
+    return tle_hex
+def tle_2_command_script(tle_hex,file_name_of_json):
+    file_path = file_name_of_json
+    with open(file_path, "w", encoding="utf-8") as f:
+    # json.dump で辞書データをファイルに書き込む
+    # indent=4 を指定すると、人間が見やすいように改行とインデントを入れてくれます
+        json.dump(vars(tle_hex), f, indent=4)
+    
+
 """
 def get_tle(file_name):
     element=[]
@@ -75,14 +98,14 @@ def get_tle(file_name):
 
     return element
 def tle_2_MRAM(file_name):
-    tle =  TLE_Elements 
+    tle =   
     elements = get_tle(file_name)
     tle = tle_2_param(elements)
     tle_mram = "e" 
     return tle_mram
 
 def tle_2_param(elements):
-    tle =  TLE_Elements 
+    tle =   
     tle.ep_year  = 100 + int(elements[1][3][:2]) #y2000->100,y1900->0
     tle.ep_day = float(elements[1][3][2:]) #1/1 00:00:00utc->1.0
     tle.rev = float(elements[2][7])
