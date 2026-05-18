@@ -84,12 +84,13 @@ def tle_2_command_script(tle_hex,file_name_of_json):
     # json.dump で辞書データをファイルに書き込む
     # indent=4 を指定すると、人間が見やすいように改行とインデントを入れてくれます
         json.dump(vars(tle_hex), f, indent=4)
-    
-def generate_mram_json(tle_hex_instance, file_out_path: str = "TLE_cmd.json", mram_interval_ms: int = 5000):
+
+def generate_mram_json(tle_hex_instance, file_out_path: str = "TLE_cmd.json"):
     """
-    TLE_Hex_ のデータから、MRAM書き込み（1つ目:36バイト、2つ目:32バイト）とモード遷移コマンドを含むJSONを生成する
+    TLE_Hex_ のデータから、お手本の運用ファイルを完全に忠実に再現した
+    全コマンド relative_time_ms: 0 のJSONスクリプトを生成する（末尾の半角スペースは削除）
     """
-    # 1. 各要素を順番に結合（大文字統一）
+    # 1. 各要素を順番に結合（大文字に統一）
     hex_sequence = (
         tle_hex_instance.ep_year +
         tle_hex_instance.ep_day +
@@ -102,53 +103,67 @@ def generate_mram_json(tle_hex_instance, file_out_path: str = "TLE_cmd.json", mr
         tle_hex_instance.ascn
     ).upper()
 
+    first_command_bytes = 36  # 1パケット目は36バイト
     base_address = 32768
-    
-    # 【仕様に合わせた厳密な分割】
-    # 1つ目は36バイト(72文字)、2つ目は残り32バイト(64文字)
-    first_command_bytes = 36 
 
-    # MRAM書き込みコマンド（要素）を生成する内部関数
-    def create_mram_script_element(start_byte_idx, end_byte_idx, current_address, relative_time):
-        sub_hex = hex_sequence[start_byte_idx * 2 : end_byte_idx * 2]
-        
-        # テレメトリチェック部分のベース（開始アドレスチェック）
-        telemetry_conditions = [
-            {
+    # --- 1つ目のMRAM書き込みコマンド用テレメトリチェック生成 ---
+    telemetry_conditions_1 = [
+        {
+            "obc": "MOBC",
+            "packet_id": "MEMDUMP_MRAM3",
+            "field_name": "memory_tr_dump_begin_address",
+            "value": base_address,
+            "condition": "eq",
+            "continue_sending_commands": True
+        }
+    ]
+    sub_hex_1 = hex_sequence[0 : first_command_bytes * 2]
+    for i in range(first_command_bytes):
+        byte_hex = sub_hex_1[i * 2 : i * 2 + 2]
+        byte_value_10 = int(byte_hex, 16)
+        packet_id = "MEMDUMP_MRAM3" if i <= 4 else "MEMDUMP_EEPROM3"
+        for tr_num in [1, 2, 3]:
+            telemetry_conditions_1.append({
                 "obc": "MOBC",
-                "packet_id": "MEMDUMP_MRAM3",
-                "field_name": "memory_tr_dump_begin_address",
-                "value": current_address,
+                "packet_id": packet_id,
+                "field_name": f"memory_tr{tr_num}_dump_data[{i}]",
+                "value": byte_value_10,
                 "condition": "eq",
                 "continue_sending_commands": True
-            }
-        ]
+            })
 
-        # 各バイトのチェック条件を追加
-        for byte_index in range(start_byte_idx, end_byte_idx):
-            local_idx = byte_index - start_byte_idx
-            byte_hex = sub_hex[local_idx * 2 : local_idx * 2 + 2]
-            byte_value_10 = int(byte_hex, 16)
+    # --- 2つ目のMRAM書き込みコマンド用テレメトリチェック生成 ---
+    address_2 = base_address + first_command_bytes
+    telemetry_conditions_2 = [
+        {
+            "obc": "MOBC",
+            "packet_id": "MEMDUMP_MRAM3",
+            "field_name": "memory_tr_dump_begin_address",
+            "value": address_2,
+            "condition": "eq",
+            "continue_sending_commands": True
+        }
+    ]
+    sub_hex_2 = hex_sequence[first_command_bytes * 2 :]
+    total_bytes_2 = len(sub_hex_2) // 2
+    for i in range(total_bytes_2):
+        byte_hex = sub_hex_2[i * 2 : i * 2 + 2]
+        byte_value_10 = int(byte_hex, 16)
+        # 2つ目のパケットは通算36バイト目以降なので全てEEPROM
+        for tr_num in [1, 2, 3]:
+            telemetry_conditions_2.append({
+                "obc": "MOBC",
+                "packet_id": "MEMDUMP_EEPROM3",
+                "field_name": f"memory_tr{tr_num}_dump_data[{i}]",
+                "value": byte_value_10,
+                "condition": "eq",
+                "continue_sending_commands": True
+            })
 
-            # 重要：パケットが変わるため、OBCから返るインデックスは常に 0 からスタートする
-            telemetry_idx = local_idx 
-
-            # パケットIDの判定（元データ全体の通算インデックスが5以降ならEEPROM）
-            packet_id = "MEMDUMP_MRAM3" if byte_index <= 4 else "MEMDUMP_EEPROM3"
-
-            for tr_num in [1, 2, 3]:
-                condition_packet = {
-                    "obc": "MOBC",
-                    "packet_id": packet_id,
-                    "field_name": f"memory_tr{tr_num}_dump_data[{telemetry_idx}]",
-                    "value": byte_value_10,
-                    "condition": "eq",
-                    "continue_sending_commands": True
-                }
-                telemetry_conditions.append(condition_packet)
-
-        element = {
-            "relative_time_ms": relative_time,
+    # お手本の順序・書式を完全に固定した辞書リストの構築
+    scripts = [
+        {
+            "relative_time_ms": 0,
             "command_satellite_id": "SAT_2U",
             "command_processor_id": "MOBC",
             "command_route": "DIRECT",
@@ -161,93 +176,112 @@ def generate_mram_json(tle_hex_instance, file_out_path: str = "TLE_cmd.json", mr
             "issuer_processor_id": "AFSK",
             "args": {
                 "dump_flag": 1,
-                "address": current_address,
-                "write_value": sub_hex
+                "address": base_address,
+                "write_value": sub_hex_1
             },
             "comment": "MRAMの値を書き換える場合は使用",
             "check": [],
             "command_reply_check": True,
-            "telemetry_check_condition": telemetry_conditions,
+            "telemetry_check_condition": telemetry_conditions_1,
             "auto_resend_limit_count": 7,
             "result": "",
             "doc_id": "H,+-u=4})4/6Kv*=Ic~@"
+        },
+        {
+            "relative_time_ms": 0,
+            "command_satellite_id": "SAT_2U",
+            "command_processor_id": "MOBC",
+            "command_route": "DIRECT",
+            "channel_id": "MEM_MRAM_EEPROM_WRITE",
+            "response_packet_id": "ONLY_RESULT_RESPONSE",
+            "response_satellite_id": "GS_2U",
+            "response_processor_id": "AFSK",
+            "response_route": "DIRECT",
+            "issuer_satellite_id": "GS_2U",
+            "issuer_processor_id": "AFSK",
+            "args": {
+                "dump_flag": 1,
+                "address": address_2,
+                # 末尾の半角スペースを削除
+                "write_value": sub_hex_2
+            },
+            "comment": "MRAMの値を書き換える場合は使用",
+            "check": [],
+            "command_reply_check": True,
+            "telemetry_check_condition": telemetry_conditions_2,
+            "auto_resend_limit_count": 7,
+            "result": "",
+            "doc_id": "$hWd2Wpqlfq@c/q.w7Pg"
+        },
+        {
+            "relative_time_ms": 0,
+            "command_satellite_id": "SAT_2U",
+            "command_processor_id": "MOBC",
+            "command_route": "DIRECT",
+            "channel_id": "AM_INITIALIZE_APP",
+            "response_packet_id": "ONLY_RESULT_RESPONSE",
+            "response_satellite_id": "GS_2U",
+            "response_processor_id": "AFSK",
+            "response_route": "DIRECT",
+            "issuer_satellite_id": "GS_2U",
+            "issuer_processor_id": "AFSK",
+            "args": {
+                "app_id": 188
+            },
+            "comment": "書き換えたMRAMがある場合はloadする",
+            "check": [],
+            "command_reply_check": True,
+            "telemetry_check_condition": [
+                {
+                    "obc": "MOBC",
+                    "packet_id": "MEMDUMP_MRAM3",
+                    "field_name": "memory_tr_dump_begin_address",
+                    "value": 0,
+                    "condition": "eq",
+                    "continue_sending_commands": True
+                }
+            ],
+            "auto_resend_limit_count": 7,
+            "result": "",
+            "doc_id": "#o:4.JlE7g^qBFE(CG:E"
+        },
+        {
+            "relative_time_ms": 0,
+            "command_satellite_id": "SAT_2U",
+            "command_processor_id": "MOBC",
+            "command_route": "DIRECT",
+            "channel_id": "MM_START_TRANSITION",
+            "response_packet_id": "ONLY_RESULT_RESPONSE",
+            "response_satellite_id": "GS_2U",
+            "response_processor_id": "AFSK",
+            "response_route": "DIRECT",
+            "issuer_satellite_id": "GS_2U",
+            "issuer_processor_id": "AFSK",
+            "args": {
+                "mode_id": 1
+            },
+            "comment": "軌道1周期後にmode1に遷移→履歴を見て問題なければTLCを消す",
+            "check": [],
+            "command_reply_check": True,
+            "telemetry_check_condition": "NO_CHECK",
+            "auto_resend_limit_count": 7,
+            "result": "",
+            "doc_id": "6=xqa*IB9Koj?Q)q)jO$"
         }
+    ]
 
-        # 2つ目以降のコマンドにはヘッダーを追加
-        if relative_time > 0:
-            element = {
-                "reference_time": "pass_start",
-                "execution_time": 0,
-                **element
-            }
-            
-        return element
-
-    # --- 各コマンドの生成 ---
-
-    # 1つ目のMRAM書き込み（0 ～ 36バイト目 / アドレス 32768）
-    script_mram_1 = create_mram_script_element(
-        start_byte_idx=0, 
-        end_byte_idx=first_command_bytes, 
-        current_address=base_address, 
-        relative_time=0
-    )
-
-    # 2つ目のMRAM書き込み（36 ～ 68バイト目 / アドレス 32804）
-    script_mram_2 = create_mram_script_element(
-        start_byte_idx=first_command_bytes, 
-        end_byte_idx=len(hex_sequence) // 2, 
-        current_address=base_address + first_command_bytes, 
-        relative_time=mram_interval_ms
-    )
-
-    # 3つ目のコマンド：モード遷移
-    transition_time_ms = mram_interval_ms * 2
-    script_transition = {
-        "reference_time": "pass_start",
-        "execution_time": 0,
-        "relative_time_ms": transition_time_ms,
-        "command_satellite_id": "SAT_2U",
-        "command_processor_id": "MOBC",
-        "command_route": "DIRECT",
-        "channel_id": "MM_START_TRANSITION",
-        "response_packet_id": "ONLY_RESULT_RESPONSE",
-        "response_satellite_id": "GS_2U",
-        "response_processor_id": "AFSK",
-        "response_route": "DIRECT",
-        "issuer_satellite_id": "GS_2U",
-        "issuer_processor_id": "AFSK",
-        "args": {},
-        "comment": "書き換えたMRAMがある場合はloadする",
-        "check": [],
-        "command_reply_check": True,
-        "telemetry_check_condition": [
-            {
-                "obc": "MOBC",
-                "packet_id": "MEMDUMP_MRAM3",
-                "field_name": "memory_tr_dump_begin_address",
-                "value": 0,
-                "condition": "eq",
-                "continue_sending_commands": True
-            }
-        ],
-        "auto_resend_limit_count": 7,
-        "result": "",
-        "doc_id": "#o:4.JlE7g^qBFE(CG:E"
-    }
-
-    # 全体のJSON構造に統合
+    # 出力テンプレート
     script_template = {
         "absolute_times": {
             "pass_start": "2020-01-01 0:0:0.0"
         },
         "version": 4,
         "is_mixed": True,
-        "scripts": [script_mram_1, script_mram_2, script_transition]
+        "scripts": scripts
     }
 
-    # JSONファイルとして書き出し
+    # ファイル書き出し
     with open(file_out_path, "w", encoding="utf-8") as f:
         json.dump(script_template, f, indent=4, ensure_ascii=False)
 
-    print(f"正常に正規仕様に準拠したコマンドスクリプトを生成しました: {file_out_path}")
+    print(f"修正完了：スクリプトを出力しました: {file_out_path}")
