@@ -85,13 +85,11 @@ def tle_2_command_script(tle_hex,file_name_of_json):
     # indent=4 を指定すると、人間が見やすいように改行とインデントを入れてくれます
         json.dump(vars(tle_hex), f, indent=4)
 
-import os
-import json
-
 def generate_mram_json(tle_hex_instance, file_out_path: str = "TLE_cmd.json"):
     """
     TLE_Hex_ のデータから、最初の3つのコマンド（MRAM書き込み×2、APP初期化）のみで構成された
     1U用と2U用のJSONスクリプトを自動生成します。
+    ファイル名に必ず「.json」の拡張子が付くように修正しました。
     """
     # 1. 各要素を順番に結合（大文字に統一）
     hex_sequence = (
@@ -125,7 +123,7 @@ def generate_mram_json(tle_hex_instance, file_out_path: str = "TLE_cmd.json"):
         byte_hex = sub_hex_1[i * 2 : i * 2 + 2]
         byte_value_10 = int(byte_hex, 16)
         
-        # 配列の添え字が2以下なら MRAM3、3以上なら EEPROM3 (お手本の仕様)
+        # 配列の添え字が2以下なら MRAM3、3以上なら EEPROM3
         packet_id = "MEMDUMP_MRAM3" if i <= 2 else "MEMDUMP_EEPROM3"
         
         for tr_num in [1, 2, 3]:
@@ -169,15 +167,17 @@ def generate_mram_json(tle_hex_instance, file_out_path: str = "TLE_cmd.json"):
                 "continue_sending_commands": True
             })
 
-    # ファイル名（拡張子あり/なし）の分解
-    base_name, ext = os.path.splitext(file_out_path)
+    # 【修正箇所】ファイル名から拡張子をいったん完全に分離し、ベース名だけを取り出す
+    base_name, _ = os.path.splitext(file_out_path)
 
     # 1U用と2U用のループ処理
     sat_types = ["1U", "2U"]
     for sat_type in sat_types:
         sat_id = f"SAT_{sat_type}"
         gs_id = f"GS_{sat_type}"
-        specific_out_path = f"{base_name}_{sat_type}{ext}"
+        
+        # 【修正箇所】末尾に必ず「_1U.json」または「_2U.json」が結合されるように固定
+        specific_out_path = f"{base_name}_{sat_type}.json"
 
         # 最初の3つのコマンドのみを格納
         scripts = [
