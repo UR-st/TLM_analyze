@@ -99,7 +99,7 @@ def tle_2_MRAM(norad_id,file_name_of_json):
     tle_params = tle_2_param(lines,norad_id)
     tle_hex = param_2_hex(tle_params, type)
     #tle_2_command_script(tle_hex,file_name_of_json)
-    generate_mram_json(tle_hex, file_name_of_json)
+    generate_mram_json_for_tle(tle_hex, file_name_of_json)
     
     # ここでMRAM送信用データへの変換処理を行う想定
     
@@ -114,7 +114,7 @@ def tle_2_command_script(tle_hex,file_name_of_json):
     # indent=4 を指定すると、人間が見やすいように改行とインデントを入れてくれます
         json.dump(vars(tle_hex), f, indent=4)
 
-def generate_mram_json(tle_hex_instance, file_out_path: str = "TLE_cmd.json"):
+def generate_mram_json_for_tle(tle_hex_instance, file_out_path: str = "TLE_cmd.json"):
     """
     TLE_Hex_ のデータから、最初の3つのコマンド（MRAM書き込み×2、APP初期化）のみで構成された
     1U用と2U用のJSONスクリプトを自動生成します。
