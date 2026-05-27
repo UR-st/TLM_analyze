@@ -92,14 +92,14 @@ def param_2_hex(param, type):
    
     return tle_hex # 仮の実装
 
-def tle_2_MRAM(norad_id,file_name_of_json):
+def tle_2_MRAM(norad_id, file_name_of_json, app_id=188):
     #lines = get_tle_lines(file_name)
     # Webから取得する新しい関数に書き換える！
     lines = get_tle_lines_from_web(norad_id)
     tle_params = tle_2_param(lines,norad_id)
     tle_hex = param_2_hex(tle_params, type)
     #tle_2_command_script(tle_hex,file_name_of_json)
-    generate_mram_json_for_tle(tle_hex, file_name_of_json)
+    generate_mram_json_for_tle(tle_hex, file_name_of_json, app_id=app_id)
     
     # ここでMRAM送信用データへの変換処理を行う想定
     
@@ -114,7 +114,7 @@ def tle_2_command_script(tle_hex,file_name_of_json):
     # indent=4 を指定すると、人間が見やすいように改行とインデントを入れてくれます
         json.dump(vars(tle_hex), f, indent=4)
 
-def generate_mram_json_for_tle(tle_hex_instance, file_out_path: str = "TLE_cmd.json"):
+def generate_mram_json_for_tle(tle_hex_instance, file_out_path: str = "TLE_cmd.json", app_id: int = 188):
     """
     TLE_Hex_ のデータから、最初の3つのコマンド（MRAM書き込み×2、APP初期化）のみで構成された
     1U用と2U用のJSONスクリプトを自動生成します。
@@ -273,7 +273,7 @@ def generate_mram_json_for_tle(tle_hex_instance, file_out_path: str = "TLE_cmd.j
                 "issuer_satellite_id": gs_id,
                 "issuer_processor_id": "AFSK",
                 "args": {
-                    "app_id": 188
+                    "app_id": app_id
                 },
                 "comment": "書き換えたMRAMがある場合はloadする",
                 "check": [],

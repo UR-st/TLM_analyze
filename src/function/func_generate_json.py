@@ -6,31 +6,29 @@ import struct
 import json
 import os
 import requests
+import random
+import string  # ランダム文字列生成用に追加
 
-import json
-import os
-import json
-import os
+# --- ランダムID生成用の補助関数 ---
+def generate_random_doc_id(length=20):
+    """20文字のランダムな英数字文字列を生成します"""
+    return ''.join(random.choices(string.ascii_letters + string.digits, k=length))
 
-def generate_mram_json(hex_sequence: str, base_address: int, file_out_path: str = "TLE_cmd.json"):
+def generate_mram_json(hex_sequence: str, base_address: int, file_out_path: str = "TLE_cmd.json", app_id: int = 188):
     """
-    16進数文字列データから、MRAM書き込みコマンド（最大40バイトごとに自動分割）と
-    APP初期化コマンドで構成された1U用と2U用のJSONスクリプトを自動生成します。
-    
-    引数:
-        hex_sequence (str): 結合済みの16進数文字列
-        base_address (int): 書き込みを開始するMRAMのベースアドレス（必須）
-        file_out_path (str): 出力ファイル名のベース（デフォルト: "TLE_cmd.json"）
+    16進数文字列データから、MRAM書き込みコマンドとAPP初期化コマンドで構成された
+    JSONスクリプトを自動生成します。doc_idは20文字のランダムな値になります。
     """
-    # 入力された16進数文字列を大文字に統一
     hex_sequence = hex_sequence.upper()
-
-    max_command_bytes = 40  # 1パケットの最大バイト数
+    max_command_bytes = 40
 
     # --- MRAM書き込みコマンド作成用の内部関数 ---
-    def create_mram_write_script(sat_id, gs_id, start_address, hex_data, doc_id_str):
+    def create_mram_write_script(sat_id, gs_id, start_address, hex_data):
+        # doc_idをここで生成
+        doc_id_str = generate_random_doc_id()
+
         data_bytes = len(hex_data) // 2
-        
+
         telemetry_conditions = [
             {
                 "obc": "MOBC",
@@ -42,12 +40,9 @@ def generate_mram_json(hex_sequence: str, base_address: int, file_out_path: str 
             }
         ]
         
-        # データのバイト数に合わせて動的にテレメトリチェックを作成
         for i in range(data_bytes):
             byte_hex = hex_data[i * 2 : i * 2 + 2]
             byte_value_10 = int(byte_hex, 16)
-            
-            # 配列の添え字が2以下なら MRAM3、3以上なら EEPROM3
             packet_id = "MEMDUMP_MRAM3" if i <= 2 else "MEMDUMP_EEPROM3"
             
             for tr_num in [1, 2, 3]:
@@ -86,37 +81,26 @@ def generate_mram_json(hex_sequence: str, base_address: int, file_out_path: str 
             "doc_id": doc_id_str
         }
 
-    # ファイル名から拡張子を完全に分離し、ベース名だけを取り出す
     base_name, _ = os.path.splitext(file_out_path)
 
-    # 1U用と2U用のループ処理
     sat_types = ["1U", "2U"]
     for sat_type in sat_types:
         sat_id = f"SAT_{sat_type}"
         gs_id = f"GS_{sat_type}"
-        
         specific_out_path = f"{base_name}_{sat_type}.json"
         
         scripts = []
-        
         current_address = base_address
         total_hex_len = len(hex_sequence)
-        
-        # 16進数文字列を40バイト(80文字)ごとに分割してループ
         chunk_size_chars = max_command_bytes * 2
         
-        for idx, offset in enumerate(range(0, total_hex_len, chunk_size_chars)):
+        for offset in range(0, total_hex_len, chunk_size_chars):
             chunk_hex = hex_sequence[offset : offset + chunk_size_chars]
-            doc_id_str = f"MRAM_WRITE_CMD_{idx + 1}"
-            
-            # 分割したデータ長に応じたコマンドを生成して追加
-            script_cmd = create_mram_write_script(sat_id, gs_id, current_address, chunk_hex, doc_id_str)
+            script_cmd = create_mram_write_script(sat_id, gs_id, current_address, chunk_hex)
             scripts.append(script_cmd)
-            
-            # 次のコマンドのために書き込み開始アドレスを進める
             current_address += len(chunk_hex) // 2
 
-        # 最後にAPP初期化コマンドを追加
+        # APP初期化コマンドのdoc_idもランダムにする場合
         scripts.append({
             "relative_time_ms": 0,
             "command_satellite_id": sat_id,
@@ -129,29 +113,23 @@ def generate_mram_json(hex_sequence: str, base_address: int, file_out_path: str 
             "response_route": "DIRECT",
             "issuer_satellite_id": gs_id,
             "issuer_processor_id": "AFSK",
-            "args": {
-                "app_id": 188
-            },
+            "args": { "app_id": app_id },
             "comment": "書き換えたMRAMがある場合はloadする",
             "check": [],
             "command_reply_check": True,
             "telemetry_check_condition": "NO_CHECK",
             "auto_resend_limit_count": 7,
             "result": "",
-            "doc_id": "AM_INIT_APP_CMD"
+            "doc_id": generate_random_doc_id()
         })
 
-        # 最終テンプレート
         script_template = {
-            "absolute_times": {
-                "pass_start": "2020-01-01 0:0:0.0"
-            },
+            "absolute_times": { "pass_start": "2020-01-01 0:0:0.0" },
             "version": 4,
             "is_mixed": True,
             "scripts": scripts
         }
 
-        # JSONファイル出力
         with open(specific_out_path, "w", encoding="utf-8") as f:
             json.dump(script_template, f, indent=4, ensure_ascii=False)
 
