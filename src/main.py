@@ -10,7 +10,7 @@ sys.path.insert(0, os.path.join(_SRC_DIR, "class"))
 import function.func_tle as fn_tle
 from class_dir.class_def import TLE_Elements_, TLE_Hex_
 import configparser
-import function.func_suns as fn_suns
+#import function.func_suns as fn_suns
 from gui.gui import start_app
 
 # --- パス指定の修正（ここを書き換えます） ---
@@ -32,4 +32,4 @@ if config.getboolean("RUN_SETTINGS", "TLE_MRAM"):
     # 関数に渡すファイル名に変数を指定
     TLE_HEX = fn_tle.tle_2_MRAM(tle_input_path, "TLE_cmd")
 """
-fn_suns.test()
+#fn_suns.test()
