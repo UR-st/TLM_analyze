@@ -154,7 +154,7 @@ def select_startup_mode():
 
     ttk.Checkbutton(
         frame,
-        text="TLEからMRAM変更コマンド生成",
+        text="NoradIDからMRAM変更コマンド生成",
         variable=tle_var,
         command=on_tle_checked,
     ).pack(anchor=tk.W, pady=4)
@@ -205,7 +205,7 @@ def build_custom_window(parent, root):
 
     frame_addr = ttk.Frame(parent)
     frame_addr.pack(fill=tk.X, padx=20, pady=5)
-    ttk.Label(frame_addr, text="ベースアドレス:").pack(side=tk.LEFT)
+    ttk.Label(frame_addr, text="スタートアドレス:").pack(side=tk.LEFT)
     entry_addr = ttk.Entry(frame_addr, width=15)
     entry_addr.pack(side=tk.RIGHT, expand=True, fill=tk.X, padx=(10, 0))
     entry_addr.insert(0, "32768")
