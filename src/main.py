@@ -27,9 +27,15 @@ config.read(config_path, encoding="utf-8")
 
 # TLE変更scriptの作成
 if config.getboolean("RUN_SETTINGS", "TLE_MRAM"):
-    start_app()
+    #start_app()
+    #elements = fn_tle.tle_file_2_orbital_elements("tle.txt")
+    orbital_elements = fn_tle.tle_file_2_orbital_elements("tle.txt")
+    print(orbital_elements)
     """TLE_HEX = TLE_Hex_
     # 関数に渡すファイル名に変数を指定
     TLE_HEX = fn_tle.tle_2_MRAM(tle_input_path, "TLE_cmd")
 """
+
+elements = fn_tle.tle_file_2_orbital_elements("tle.txt")
+print(elements)
 #fn_suns.test()
